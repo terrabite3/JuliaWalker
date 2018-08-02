@@ -1,0 +1,9 @@
+[requires]
+libpng/1.6.34@bincrafters/stable
+
+[options]
+libpng:shared=False #True # false
+
+[generators]
+txt
+cmake
