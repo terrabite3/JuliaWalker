@@ -9,6 +9,9 @@ add_executable(${PROJECT_NAME}
     src/test.cpp
     src/ImageWriter.h
     src/ImageWriter.cpp
+    src/Complex.h
+    src/EpicyclePath.h
+    src/EpicyclePath.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

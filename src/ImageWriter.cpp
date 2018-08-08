@@ -44,7 +44,7 @@ uint32_t BufferFloat::getHeight() const
 
 
 
-int writeImage(char* filename, const BufferFloat& buffer, char* title)
+int writeImage(std::string filename, const BufferFloat& buffer)
 {
     int code = 0;
     FILE *fp = NULL;
@@ -56,10 +56,10 @@ int writeImage(char* filename, const BufferFloat& buffer, char* title)
     auto height = buffer.getHeight();
 
     // Open file for writing (binary mode)
-    fp = fopen(filename, "wb");
+    fp = fopen(filename.c_str(), "wb");
     if (fp == NULL)
     {
-        fprintf(stderr, "Could not open file %s for writing\n", filename);
+        fprintf(stderr, "Could not open file %s for writing\n", filename.c_str());
         code = 1;
         goto finalise;
     }
@@ -96,16 +96,6 @@ int writeImage(char* filename, const BufferFloat& buffer, char* title)
     png_set_IHDR(png_ptr, info_ptr, width, height,
         8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
-
-    // Set title
-    if (title != NULL)
-    {
-        png_text title_text;
-        title_text.compression = PNG_TEXT_COMPRESSION_NONE;
-        title_text.key = "Title";
-        title_text.text = title;
-        png_set_text(png_ptr, info_ptr, &title_text, 1);
-    }
 
     png_write_info(png_ptr, info_ptr);
 

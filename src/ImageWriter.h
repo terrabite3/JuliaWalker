@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <string>
 
 struct PixelFloat
 {
@@ -30,4 +31,4 @@ private:
 };
 
 
-int writeImage(char* filename, const BufferFloat& buffer, char* title);
+int writeImage(std::string filename, const BufferFloat& buffer);
