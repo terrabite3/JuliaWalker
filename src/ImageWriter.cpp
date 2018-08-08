@@ -9,7 +9,7 @@ BufferFloat::BufferFloat(uint32_t width, uint32_t height) :
 {
     assert(width > 0);
     assert(height > 0);
-    m_data = new PixelFloat[width * height];
+    m_data = new Pixel[width * height];
 }
 
 BufferFloat::~BufferFloat()
@@ -17,14 +17,14 @@ BufferFloat::~BufferFloat()
     delete[] m_data;
 }
 
-void BufferFloat::set(uint32_t x, uint32_t y, PixelFloat data)
+void BufferFloat::set(uint32_t x, uint32_t y, Pixel data)
 {
     assert(x < m_width);
     assert(y < m_height);
     m_data[y * m_width + x] = data;
 }
 
-const PixelFloat& BufferFloat::get(uint32_t x, uint32_t y) const
+const Pixel& BufferFloat::get(uint32_t x, uint32_t y) const
 {
     assert(x < m_width);
     assert(y < m_height);
@@ -114,9 +114,9 @@ int writeImage(std::string filename, const BufferFloat& buffer)
 
             auto inPixel = buffer.get(x, y);
 
-            outPixel[0] = (png_byte)(inPixel.r * 255);
-            outPixel[1] = (png_byte)(inPixel.g * 255);
-            outPixel[2] = (png_byte)(inPixel.b * 255);
+            outPixel[0] = inPixel.r;
+            outPixel[1] = inPixel.g;
+            outPixel[2] = inPixel.b;
 
         }
 

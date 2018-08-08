@@ -32,46 +32,48 @@ double clip(double val, double min, double max)
 
 
 
-PixelFloat rainbow(double val, double period)
+Pixel rainbow(double val, double period)
 {
     double sixthPeriod = period / 6;
 
     val = fmod(val, period);
 
-    PixelFloat result{ 0, 0, 0, 1 };
+    double r = 0.0;
+    double g = 0.0;
+    double b = 0.0;
 
     if (val >= 0 && val < sixthPeriod)
     {
-        result.r = 1.0;
-        result.g = val / sixthPeriod;
+        r = 1.0;
+        g = val / sixthPeriod;
     }
     if (val >= sixthPeriod && val < 2 * sixthPeriod)
     {
-        result.r = 1.0 - (val - sixthPeriod) / sixthPeriod;
-        result.g = 1.0;
+        r = 1.0 - (val - sixthPeriod) / sixthPeriod;
+        g = 1.0;
     }
     if (val >= 2 * sixthPeriod && val < 3 * sixthPeriod)
     {
-        result.g = 1.0;
-        result.b = (val - 2 * sixthPeriod) / sixthPeriod;
+        g = 1.0;
+        b = (val - 2 * sixthPeriod) / sixthPeriod;
     }
     if (val >= 3 * sixthPeriod && val < 4 * sixthPeriod)
     {
-        result.g = 1.0 - (val - 3 * sixthPeriod) / sixthPeriod;
-        result.b = 1.0;
+        g = 1.0 - (val - 3 * sixthPeriod) / sixthPeriod;
+        b = 1.0;
     }
     if (val >= 4 * sixthPeriod && val < 5 * sixthPeriod)
     {
-        result.b = 1.0;
-        result.r = (val - 4 * sixthPeriod) / sixthPeriod;
+        b = 1.0;
+        r = (val - 4 * sixthPeriod) / sixthPeriod;
     }
     if (val >= 5 * sixthPeriod && val < 6 * sixthPeriod)
     {
-        result.b = 1.0 - (val - 5 * sixthPeriod) / sixthPeriod;
-        result.r = 1.0;
+        b = 1.0 - (val - 5 * sixthPeriod) / sixthPeriod;
+        r = 1.0;
     }
 
-    return result;
+    return Pixel::fromNormalizedFloat(r, g, b);
 }
 
 
@@ -131,11 +133,12 @@ std::shared_ptr<BufferFloat> renderMandelbrot(int width, int height, MandelbrotP
 
             if (val == -1)
             {
-                buffer->set(px, py, { 0, 0, 0, 1 });
+                buffer->set(px, py, Pixel(0, 0, 0));
             }
             else
             {
-                buffer->set(px, py, { val / 100.0, val / 100.0, val / 100.0, 1 });
+                uint8_t grayValue = clip(val * 255 / 100, 0, 255);
+                buffer->set(px, py, Pixel(grayValue, grayValue, grayValue));
             }
         }
     }
@@ -174,11 +177,10 @@ std::shared_ptr<BufferFloat> renderJulia(int width, int height, const Complex& c
 
             if (val == -1)
             {
-                buffer->set(px, py, { 0, 0, 0, 1 });
+                buffer->set(px, py, Pixel(0, 0, 0));
             }
             else
             {
-                //buffer->set(px, py, { val / 100.0, val / 100.0, val / 100.0, 1 });
                 buffer->set(px, py, rainbow(val, 100));
             }
         }
@@ -320,24 +322,22 @@ void downsampleBuffer(std::shared_ptr<BufferFloat> & buffer, int supersample)
     {
         for (int x = 0; x < downsampledWidth; ++x)
         {
-            PixelFloat accumulator;
+            double r = 0, g = 0, b = 0, a = 0;
             for (int j = 0; j < supersample; ++j)
             {
                 for (int i = 0; i < supersample; ++i)
                 {
-                    PixelFloat subpixel = buffer->get(x * supersample + i, y * supersample + j);
-                    accumulator.r += subpixel.r;
-                    accumulator.g += subpixel.g;
-                    accumulator.b += subpixel.b;
-                    accumulator.a += subpixel.a;
+                    Pixel subpixel = buffer->get(x * supersample + i, y * supersample + j);
+                    r += subpixel.r;
+                    g += subpixel.g;
+                    b += subpixel.b;
                 }
             }
-            accumulator.r /= supersample * supersample;
-            accumulator.g /= supersample * supersample;
-            accumulator.b /= supersample * supersample;
-            accumulator.a /= supersample * supersample;
+            r /= supersample * supersample;
+            g /= supersample * supersample;
+            b /= supersample * supersample;
 
-            tempBuffer->set(x, y, accumulator);
+            tempBuffer->set(x, y, Pixel{ (uint8_t)r, (uint8_t)g, (uint8_t)b });
         }
     }
 
@@ -375,7 +375,7 @@ void runJob(std::vector<ThreadArgs> argList)
 int main(int argc, char *argv[])
 {
     // https://www.marksmath.org/visualization/julia_sets/
-    // https://www.desmos.com/calculator/ksjcpazwa9
+    // https://www.desmos.com/calculator/44ka3v8igm
 
 
 
