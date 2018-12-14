@@ -10,6 +10,8 @@
 #include "EpicyclePath.h"
 #include "Complex.h"
 #include <thread>
+#include <SDL.h>
+#undef main
 
 const double PI = 3.1415926535897323;
 
@@ -169,8 +171,9 @@ std::shared_ptr<BufferFloat> renderJulia(int width, int height, const Complex& c
     {
         for (int px = 0; px < width; ++px)
         {
-            double x0 = params.left + (px * (params.right - params.left) / width);
-            double y0 = params.top + (py * (params.bottom - params.top) / height);
+            // Swapping to rotate 90 degrees
+            double y0 = params.left + (px * (params.right - params.left) / width);
+            double x0 = params.top + (py * (params.bottom - params.top) / height);
             Complex z0(x0, y0);
 
             int val = julia(z0, c, params.maxIt);
@@ -298,7 +301,7 @@ void drawPath(BufferFloat& buffer, const std::vector<Complex>& path, const Mande
 
             PixelPoint inter = inverseTransform(interpolatePoint, params, buffer.getWidth(), buffer.getHeight());
 
-            buffer.set(inter.x, inter.y, rainbow(i, 100));
+            buffer.set(inter.x, inter.y, rainbow(i, path.size()));
         }
 
         dpPrev = dp;
@@ -347,7 +350,8 @@ void downsampleBuffer(std::shared_ptr<BufferFloat> & buffer, int supersample)
 
 struct ThreadArgs
 {
-    std::string filename;
+    //std::string filename;
+    uint8_t* pixels;
     int width;
     int height;
     int supersample;
@@ -355,99 +359,364 @@ struct ThreadArgs
     MandelbrotParameters juliaParams;
 };
 
-void runJob(std::vector<ThreadArgs> argList)
+void runJob(ThreadArgs args)
 {
-    for (auto args : argList)
+    auto juliaBuffer = renderJulia(args.width * args.supersample, args.height * args.supersample, args.c, args.juliaParams);
+
+    downsampleBuffer(juliaBuffer, args.supersample);
+
+
+    int i = 0;
+    for (int y = 0; y < args.height; ++y)
     {
-        auto juliaBuffer = renderJulia(args.width * args.supersample, args.height * args.supersample, args.c, args.juliaParams);
-
-        downsampleBuffer(juliaBuffer, args.supersample);
-
-        writeImage(args.filename, *juliaBuffer);
-
-        std::string doneString = "Finished frame " + args.filename + "\n";
-
-        std::cout << doneString;
+        for (int x = 0; x < args.width; ++x)
+        {
+            auto px = juliaBuffer->get(x, y);
+            args.pixels[i++] = px.r;
+            args.pixels[i++] = px.g;
+            args.pixels[i++] = px.b;
+            //pixelPointer2[i++] = 255;
+        }
     }
+
 }
 
+//
+//int main(int argc, char *argv[])
+//{
+//    // https://www.marksmath.org/visualization/julia_sets/
+//    // https://www.desmos.com/calculator/44ka3v8igm
+//
+//
+//
+//    //// Make sure that the output filename argument has been provided
+//    //if (argc != 2) {
+//    //    fprintf(stderr, "Please specify output file\n");
+//    //    return 1;
+//    //}
+//
+//    bool quit = false;
+//    SDL_Event event;
+//
+//    SDL_Init(SDL_INIT_VIDEO);
+//
+//    SDL_Window * window = SDL_CreateWindow("SDL2 Displaying Image",
+//        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, 0);
+//
+//
+//    // Specify an output image size
+//    int supersample = 2;
+//    int width = 800;
+//    int height = 600;
+//
+//
+//    MandelbrotParameters params = { -2, 1, -1.125, 1.125, 1000 };
+//    //MandelbrotParameters params = { -1.5, 1.5, -1.125, 1.125, 1000 };
+//
+//
+//    auto buffer = renderMandelbrot(width, height, params);
+//
+//    double repeatPeriodYears = 0.2;
+//    double year = 1.0 / repeatPeriodYears;
+//    double day = year / 365;
+//    double hour = day / 24;
+//    double minute = hour / 60;
+//    double second = minute / 60;
+//
+//    double start = 60 * day * repeatPeriodYears;
+//    double length = 1 * hour;
+//    int steps = 600;
+//
+//    //auto path = brownianWalk(params, length, steps);
+//    double distance = 0.7885;
+//    //std::vector<Complex> path = circlePath<double>(distance, 2.26, 2.28, steps);
+//    std::vector<Epicycle> epicycles {
+//        Epicycle{ .5, 2 * PI, 0 },
+//        Epicycle{ .25, 4 * PI, PI  },
+//        Epicycle{ 0.01, 1000, 0 }
+//    };
+//    auto path = epicyclePath(epicycles, start, start + length, steps);
+//
+//    drawPath(*buffer, path, params);
+//
+//    printf("Saving PNG\n");
+//    int result = writeImage("output.png", *buffer);
+//
+//
+//    SDL_Renderer * renderer = SDL_CreateRenderer(window, -1, 0);
+//
+//    //SDL_Surface * image = SDL_CreateRGBSurface(0, width, height, 32, 0, 0, 0, 0);
+//
+//
+//    uint8_t* pixels = new uint8_t[width * height * 4];
+//
+//    int i = 0;
+//    for (int y = 0; y < height; ++y)
+//    {
+//        for (int x = 0; x < width; ++x)
+//        {
+//            auto px = buffer->get(x, y);
+//            pixels[i++] = px.r;
+//            pixels[i++] = px.g;
+//            pixels[i++] = px.b;
+//            pixels[i++] = 255;
+//        }
+//    }
+//
+//    SDL_Surface * image = SDL_CreateRGBSurfaceFrom(pixels, width, height, 32, 4 * width, 0, 0, 0, 0);
+//
+//    SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, image);
+//
+//
+//
+//
+//
+//
+//    while (!quit)
+//    {
+//        SDL_WaitEvent(&event);
+//
+//        switch (event.type)
+//        {
+//        case SDL_QUIT:
+//            quit = true;
+//            break;
+//        }
+//
+//
+//        SDL_RenderCopy(renderer, texture, NULL, NULL);
+//        SDL_RenderPresent(renderer);
+//
+//    }
+//
+//
+//
+//
+//    MandelbrotParameters juliaParams = { -1.5, 1.5, -1.125, 1.125, 1000 };
+//
+//
+//    int maxThreads = 8;
+//    std::vector<std::vector<ThreadArgs>> argsLists;
+//    for (int i = 0; i < maxThreads; ++i)
+//    {
+//        argsLists.emplace_back();
+//    }
+//
+//    for (int i = 0; i < path.size(); ++i)
+//    {
+//        ThreadArgs args;
+//        args.filename = "frame" + std::to_string(i) + ".png";
+//        args.width = width;
+//        args.height = height;
+//        args.supersample = supersample;
+//        args.c = path[i];
+//        args.juliaParams = juliaParams;
+//
+//        argsLists[i % maxThreads].emplace_back(args);
+//    }
+//
+//    std::vector<std::thread> runningJobs;
+//    for (auto argList : argsLists)
+//    {
+//        runningJobs.emplace_back(runJob, argList);
+//    }
+//
+//    for (auto& job : runningJobs)
+//    {
+//        job.join();
+//    }
+//
+//
+//    //return result;
+//    return 0;
+//}
 
-int main(int argc, char *argv[])
+
+int main()
 {
-    // https://www.marksmath.org/visualization/julia_sets/
-    // https://www.desmos.com/calculator/44ka3v8igm
+    int width = 1920;
+    int height = 1080;
 
 
 
-    // Make sure that the output filename argument has been provided
-    if (argc != 2) {
-        fprintf(stderr, "Please specify output file\n");
-        return 1;
+    bool quit = false;
+    SDL_Event event;
+
+    SDL_Init(SDL_INIT_VIDEO);
+
+
+
+    auto win = SDL_CreateWindow("Julia Set", 0, 0, width, height, SDL_WINDOW_SHOWN);
+    if (win == nullptr)
+    {
+        std::cout << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return {};
     }
 
-    // Specify an output image size
+    // Create the Renderer that will render our image into the window.
+    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (ren == nullptr)
+    {
+        SDL_DestroyWindow(win);
+        std::cout << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return {};
+    }
+
+    SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (tex == nullptr)
+    {
+        std::cout << "SDL_CreateTexture Error: " << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return {};
+    }
+
+
+
+
     int supersample = 2;
-    int width = 800;
-    int height = 600;
 
+    double repeatPeriodYears = 0.2;
+    double year = 1.0 / repeatPeriodYears;
+    double day = year / 365;
+    double hour = day / 24;
+    double minute = hour / 60;
+    double second = minute / 60;
 
-    MandelbrotParameters params = { -2, 1, -1.125, 1.125, 1000 };
-    //MandelbrotParameters params = { -1.5, 1.5, -1.125, 1.125, 1000 };
+    double start = 60 * day * repeatPeriodYears;
+    double length = 16 * hour;
+    int steps = 600;
 
-
-    auto buffer = renderMandelbrot(width, height, params);
-
-    double length = 0.3;
-    int steps = 3142;
     //auto path = brownianWalk(params, length, steps);
     double distance = 0.7885;
     //std::vector<Complex> path = circlePath<double>(distance, 2.26, 2.28, steps);
     std::vector<Epicycle> epicycles {
-        Epicycle{ .5, 2 * PI, -PI/2 },
-        Epicycle{ .25, 4 * PI, 0  }
+        Epicycle{ .5, 2 * PI, 0 },
+        Epicycle{ .25, 4 * PI, PI  },
+        Epicycle{ 0.01, 1000, 0 }
     };
-    auto path = epicyclePath(epicycles, 0.25, 0.75, steps);
 
-    drawPath(*buffer, path, params);
-
-
-    printf("Saving PNG\n");
-    int result = writeImage(argv[1], *buffer);
-
-    MandelbrotParameters juliaParams = { -1.5, 1.5, -1.125, 1.125, 1000 };
+    auto path = epicyclePath(epicycles, start, start + length, steps);
 
 
-    int maxThreads = 8;
-    std::vector<std::vector<ThreadArgs>> argsLists;
+
+
+    int maxThreads = 12;
+    std::vector<uint8_t*> pixelBuffers;
+    int eachBufferLength = width * height * 3 / maxThreads;
     for (int i = 0; i < maxThreads; ++i)
     {
-        argsLists.emplace_back();
+        pixelBuffers.emplace_back(new uint8_t[eachBufferLength]);
     }
 
-    for (int i = 0; i < path.size(); ++i)
+
+    int pathIndex = 0;
+
+
+
+    while (!quit)
     {
-        ThreadArgs args;
-        args.filename = "frame" + std::to_string(i) + ".png";
-        args.width = width;
-        args.height = height;
-        args.supersample = supersample;
-        args.c = path[i];
-        args.juliaParams = juliaParams;
+        if (SDL_WaitEventTimeout(&event, 1))
+        {
+            switch (event.type)
+            {
+            case SDL_QUIT:
+                quit = true;
+                break;
+            }
+        }
 
-        argsLists[i % maxThreads].emplace_back(args);
+
+        double y = 1.125;
+        double x = y * width / height;
+
+        MandelbrotParameters juliaParams = { -x, x, -y, y, 100 };
+        auto c = path[pathIndex++];
+
+        std::cout << "c = " << c.r << " + " << c.i << "i\n";
+
+
+
+
+
+        std::vector<std::thread> runningJobs;
+        for (int i = 0; i < maxThreads; ++i)
+        {
+            //auto pixBuf = ;
+            //pixelBuffers.emplace_back(pixBuf);
+
+
+            ThreadArgs args;
+            //args.filename = "frame" + std::to_string(i) + ".png";
+            args.pixels = pixelBuffers[i];
+            args.width = width;
+            args.height = height / maxThreads;
+            args.supersample = supersample;
+            args.c = c;
+            args.juliaParams = juliaParams;
+
+
+            double top = args.juliaParams.top + i * (args.juliaParams.bottom - args.juliaParams.top) / maxThreads;
+            double bottom = args.juliaParams.top + (i + 1) * (args.juliaParams.bottom - args.juliaParams.top) / maxThreads;
+
+
+            args.juliaParams.top = top;
+            args.juliaParams.bottom = bottom;
+
+
+            runningJobs.emplace_back(runJob, args);
+            //argsLists[i % maxThreads].emplace_back(args);
+        }
+
+        for (auto& job : runningJobs)
+        {
+            job.join();
+        }
+
+
+
+
+
+        // Lock the texture so we can write to it.
+        void* pixels = nullptr;
+        auto pitch = 0;
+        if (SDL_LockTexture(tex, nullptr, &pixels, &pitch) != 0)
+        {
+            SDL_DestroyTexture(tex);
+            SDL_DestroyRenderer(ren);
+            SDL_DestroyWindow(win);
+            std::cout << "SDL_LockTexture Error: " << SDL_GetError() << std::endl;
+            SDL_Quit();
+            return {};
+        }
+
+
+
+
+
+
+
+        // Push the pixels to the texture.
+        for (int i = 0; i < maxThreads; ++i)
+        {
+            void* subpixels = (void*)((uint8_t*)pixels + i * eachBufferLength);
+            memcpy(subpixels, pixelBuffers[i], eachBufferLength);
+        }
+        //memcpy(pixels, pixelPointer2, pitch * height);
+
+        // Unlock the texture so that it updates.
+        SDL_UnlockTexture(tex);
+
+        // ReSharper disable once CppExpressionWithoutSideEffects
+
+        //First clear the renderer
+        SDL_RenderClear(ren);
+        //Draw the texture
+        SDL_RenderCopy(ren, tex, nullptr, nullptr);
+        //Update the screen
+        SDL_RenderPresent(ren);
     }
 
-    std::vector<std::thread> runningJobs;
-    for (auto argList : argsLists)
-    {
-        runningJobs.emplace_back(runJob, argList);
-    }
-
-    for (auto& job : runningJobs)
-    {
-        job.join();
-    }
-
-
-    return result;
+    return 0;
 }

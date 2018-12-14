@@ -16,4 +16,5 @@ add_executable(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     CONAN_PKG::libpng
+    CONAN_PKG::sdl2
 )
