@@ -150,12 +150,27 @@ std::shared_ptr<BufferFloat> renderMandelbrot(int width, int height, MandelbrotP
 
 int julia(const Complex& z0, const Complex& c, int maxIt)
 {
-    Complex z = z0;
+    //Complex z = z0;
+    //for (int it = 0; it < maxIt; ++it)
+    //{
+    //    z = z * z + c;
+
+    //    if (z.r*z.r + z.i*z.i > 2*2)
+    //    {
+    //        return it;
+    //    }
+    //}
+    //return -1;
+    auto x = z0.r;
+    auto y = z0.i;
     for (int it = 0; it < maxIt; ++it)
     {
-        z = z * z + c;
+        //z = z * z + c;
+        auto x_temp = x * x - y * y + c.r;
+        y = 2 * x * y + c.i;
+        x = x_temp;
 
-        if (z.r*z.r + z.i*z.i > 2*2)
+        if (x*x + y*y > 2 * 2)
         {
             return it;
         }
@@ -357,10 +372,12 @@ struct ThreadArgs
     int supersample;
     Complex c;
     MandelbrotParameters juliaParams;
+    long long* time;
 };
 
 void runJob(ThreadArgs args)
 {
+    auto start = std::chrono::system_clock::now();
     auto juliaBuffer = renderJulia(args.width * args.supersample, args.height * args.supersample, args.c, args.juliaParams);
 
     downsampleBuffer(juliaBuffer, args.supersample);
@@ -379,6 +396,9 @@ void runJob(ThreadArgs args)
         }
     }
 
+
+    auto end = std::chrono::system_clock::now();
+    *args.time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 }
 
 //
@@ -532,6 +552,55 @@ void runJob(ThreadArgs args)
 //}
 
 
+
+void reweighThreads(int totalRows, std::vector<int>& currentWeights, const long long* times)
+{
+    double beta = 0.;
+    const int N = currentWeights.size();
+
+
+    long long totalTime = 0;
+    long long minTime = 1ll << 32;
+    long long maxTime = 0;
+    for (int i = 0; i < N; ++i)
+    {
+        auto t = times[i];
+        totalTime += t;
+        minTime = std::min(minTime, t);
+        maxTime = std::max(maxTime, t);
+    }
+
+    double max2minRatio = 1.0 * maxTime / minTime;
+    std::cout << "Thread inequality: " << max2minRatio << std::endl;
+
+    for (int i = 0; i < N; ++i)
+    {
+        double timeProportion = 1.0 * N * times[i] / totalTime;
+        double coeff = 2 - timeProportion;
+        double weighted = coeff * beta + (1 - beta);
+        currentWeights[i] *= weighted;
+    }
+
+    int missingRows = totalRows;
+    for (int i = 0; i < N; ++i)
+    {
+        missingRows -= currentWeights[i];
+    }
+
+    // If missingRows is positive, there are too few rows
+    // If missingRows is negative, there are too many rows
+    int sign = missingRows > 0 ? 1 : missingRows < 0 ? -1 : 0;
+    missingRows = abs(missingRows);
+
+    for (int i = 0; i < missingRows; ++i)
+    {
+        currentWeights[i % N] += sign;
+    }
+
+}
+
+
+
 int main()
 {
     int width = 1920;
@@ -585,8 +654,8 @@ int main()
     double second = minute / 60;
 
     double start = 60 * day * repeatPeriodYears;
-    double length = 16 * hour;
-    int steps = 600;
+    double length = 30 * hour;
+    int steps = 100;
 
     //auto path = brownianWalk(params, length, steps);
     double distance = 0.7885;
@@ -602,20 +671,30 @@ int main()
 
 
 
-    int maxThreads = 12;
-    std::vector<uint8_t*> pixelBuffers;
-    int eachBufferLength = width * height * 3 / maxThreads;
+    int maxThreads = 4;
+    uint8_t* pixelBuffer = new uint8_t[width * height * 3];
+    long long* times = new long long[maxThreads];
     for (int i = 0; i < maxThreads; ++i)
     {
-        pixelBuffers.emplace_back(new uint8_t[eachBufferLength]);
+        times[i] = 0;
     }
+
+    std::vector<int> threadWeights(maxThreads, height / maxThreads);
+
+
+    //reweighThreads(height, threadWeights, times);
 
 
     int pathIndex = 0;
 
 
+    auto lastTime = std::chrono::system_clock::now();
+    double totalTime = 0;
 
-    while (!quit)
+
+
+
+    while (!quit && pathIndex < path.size())
     {
         if (SDL_WaitEventTimeout(&event, 1))
         {
@@ -634,11 +713,20 @@ int main()
         MandelbrotParameters juliaParams = { -x, x, -y, y, 100 };
         auto c = path[pathIndex++];
 
-        std::cout << "c = " << c.r << " + " << c.i << "i\n";
+
+        auto time = std::chrono::system_clock::now();
+        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(time - lastTime).count();
+        lastTime = time;
+        if (pathIndex > 1)
+        {
+            totalTime += dt;
+        }
+        auto averageTime = totalTime / (pathIndex - 1);
+
+        std::cout << "c = " << c.r << " + " << c.i << "i  \ttime = " << dt << "\tavg = " << averageTime << "\t";
 
 
-
-
+        int rowRunningSum = 0;
 
         std::vector<std::thread> runningJobs;
         for (int i = 0; i < maxThreads; ++i)
@@ -649,17 +737,21 @@ int main()
 
             ThreadArgs args;
             //args.filename = "frame" + std::to_string(i) + ".png";
-            args.pixels = pixelBuffers[i];
+            args.pixels = pixelBuffer + rowRunningSum * width * 3;
             args.width = width;
-            args.height = height / maxThreads;
+            args.height = threadWeights[i];
             args.supersample = supersample;
             args.c = c;
             args.juliaParams = juliaParams;
+            args.time = times + i;
 
 
-            double top = args.juliaParams.top + i * (args.juliaParams.bottom - args.juliaParams.top) / maxThreads;
-            double bottom = args.juliaParams.top + (i + 1) * (args.juliaParams.bottom - args.juliaParams.top) / maxThreads;
+            double top_proportion = (1.0 * rowRunningSum) / height;
+            double bottom_proportion = (1.0 * rowRunningSum + threadWeights[i]) / height;
 
+            double top = args.juliaParams.top + top_proportion * (args.juliaParams.bottom - args.juliaParams.top);
+            double bottom = args.juliaParams.top + bottom_proportion * (args.juliaParams.bottom - args.juliaParams.top);
+            rowRunningSum += threadWeights[i];
 
             args.juliaParams.top = top;
             args.juliaParams.bottom = bottom;
@@ -668,12 +760,12 @@ int main()
             runningJobs.emplace_back(runJob, args);
             //argsLists[i % maxThreads].emplace_back(args);
         }
+        assert(rowRunningSum == height);
 
         for (auto& job : runningJobs)
         {
             job.join();
         }
-
 
 
 
@@ -695,14 +787,21 @@ int main()
 
 
 
+        memcpy(pixels, pixelBuffer, width * height * 3);
 
+        //rowRunningSum = 0;
 
-        // Push the pixels to the texture.
-        for (int i = 0; i < maxThreads; ++i)
-        {
-            void* subpixels = (void*)((uint8_t*)pixels + i * eachBufferLength);
-            memcpy(subpixels, pixelBuffers[i], eachBufferLength);
-        }
+        //// Push the pixels to the texture.
+        //for (int i = 0; i < maxThreads; ++i)
+        //{
+        //    int rowOffset = rowRunningSum;
+        //    int nRows = threadWeights[i];
+        //    void* subpixels = (void*)((uint8_t*)pixels + rowOffset * width * 3);
+        //    memcpy(subpixels, pixelBuffers[i], nRows * width * 3);
+        //    
+        //    rowRunningSum += threadWeights[i];
+        //}
+        //assert(rowRunningSum == height);
         //memcpy(pixels, pixelPointer2, pitch * height);
 
         // Unlock the texture so that it updates.
@@ -716,7 +815,11 @@ int main()
         SDL_RenderCopy(ren, tex, nullptr, nullptr);
         //Update the screen
         SDL_RenderPresent(ren);
+
+        reweighThreads(height, threadWeights, times);
+
     }
+
 
     return 0;
 }
